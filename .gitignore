@@ -1,0 +1,28 @@
+# Python environments
+backend/backend_env/
+backend/clean_env/
+backend/signlang_env/
+backend/venv/
+backend/venv_old/
+
+# Python cache
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+
+# Flutter generated files
+signlang_fe/.dart_tool/
+signlang_fe/build/
+
+# Flutter IDE files
+signlang_fe/.idea/
+
+# Logs
+*.log
+
+# Environment/secrets
+.env
+*.env
