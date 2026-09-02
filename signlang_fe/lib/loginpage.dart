@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'main.dart';
+import 'home_page.dart';
 import 'theme/app_theme.dart';
 
 class LoginPage extends StatefulWidget {
@@ -25,12 +25,10 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _goToTranslator() {
+  void _goToHome() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => const TranslatorPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const HomePage()),
     );
   }
 
@@ -54,7 +52,7 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = false;
     });
 
-    _goToTranslator();
+    _goToHome();
   }
 
   @override
@@ -76,21 +74,14 @@ class _LoginPageState extends State<LoginPage> {
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 30,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: cardWidth,
-                ),
+                constraints: BoxConstraints(maxWidth: cardWidth),
                 child: Column(
                   children: [
-
                     //---------------------------------------
                     // LOGO
                     //---------------------------------------
-
                     Hero(
                       tag: "logo",
                       child: Container(
@@ -101,11 +92,10 @@ class _LoginPageState extends State<LoginPage> {
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                              color:
-                                  AppTheme.secondary.withOpacity(.25),
+                              color: AppTheme.secondary.withOpacity(.25),
                               blurRadius: 22,
                               offset: const Offset(0, 10),
-                            )
+                            ),
                           ],
                         ),
                         child: const Icon(
@@ -120,23 +110,15 @@ class _LoginPageState extends State<LoginPage> {
 
                     Text(
                       "MuteMate",
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(
-                            fontSize: 34,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontSize: 34, fontWeight: FontWeight.bold),
                     ),
 
                     const SizedBox(height: 6),
 
                     const Text(
                       "Bridging the Silence",
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 16),
                     ),
 
                     const SizedBox(height: 42),
@@ -144,34 +126,28 @@ class _LoginPageState extends State<LoginPage> {
                     //---------------------------------------
                     // LOGIN CARD
                     //---------------------------------------
-
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
                       padding: const EdgeInsets.all(26),
                       decoration: BoxDecoration(
                         color: AppTheme.surface,
                         borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          AppTheme.softShadow(),
-                        ],
+                        boxShadow: [AppTheme.softShadow()],
                       ),
 
                       child: Form(
                         key: _formKey,
                         child: Column(
                           children: [
-
                             //-----------------------------------
                             // USERNAME
                             //-----------------------------------
-
                             TextFormField(
                               controller: usernameController,
                               textInputAction: TextInputAction.next,
 
                               validator: (value) {
-                                if (value == null ||
-                                    value.trim().isEmpty) {
+                                if (value == null || value.trim().isEmpty) {
                                   return "Enter your username";
                                 }
 
@@ -183,8 +159,7 @@ class _LoginPageState extends State<LoginPage> {
                               },
 
                               decoration: const InputDecoration(
-                                prefixIcon:
-                                    Icon(Icons.person_outline),
+                                prefixIcon: Icon(Icons.person_outline),
                                 hintText: "Username",
                               ),
                             ),
@@ -194,12 +169,10 @@ class _LoginPageState extends State<LoginPage> {
                             //-----------------------------------
                             // PASSWORD
                             //-----------------------------------
-
                             TextFormField(
                               controller: passwordController,
                               obscureText: _obscurePassword,
-                              textInputAction:
-                                  TextInputAction.done,
+                              textInputAction: TextInputAction.done,
 
                               onFieldSubmitted: (_) {
                                 if (!_isLoading) {
@@ -208,8 +181,7 @@ class _LoginPageState extends State<LoginPage> {
                               },
 
                               validator: (value) {
-                                if (value == null ||
-                                    value.isEmpty) {
+                                if (value == null || value.isEmpty) {
                                   return "Enter your password";
                                 }
 
@@ -221,8 +193,7 @@ class _LoginPageState extends State<LoginPage> {
                               },
 
                               decoration: InputDecoration(
-                                prefixIcon:
-                                    const Icon(Icons.lock_outline),
+                                prefixIcon: const Icon(Icons.lock_outline),
 
                                 hintText: "Password",
 
@@ -235,8 +206,7 @@ class _LoginPageState extends State<LoginPage> {
 
                                   onPressed: () {
                                     setState(() {
-                                      _obscurePassword =
-                                          !_obscurePassword;
+                                      _obscurePassword = !_obscurePassword;
                                     });
                                   },
                                 ),
@@ -244,28 +214,25 @@ class _LoginPageState extends State<LoginPage> {
                             ),
 
                             const SizedBox(height: 30),
-                                                        //-----------------------------------
+
+                            //-----------------------------------
                             // LOGIN BUTTON
                             //-----------------------------------
-
                             SizedBox(
                               width: double.infinity,
                               height: 56,
                               child: ElevatedButton(
-                                onPressed:
-                                    _isLoading ? null : _handleContinue,
+                                onPressed: _isLoading ? null : _handleContinue,
 
                                 style: ElevatedButton.styleFrom(
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
                                 ),
 
                                 child: AnimatedSwitcher(
-                                  duration:
-                                      const Duration(milliseconds: 250),
+                                  duration: const Duration(milliseconds: 250),
 
                                   child: _isLoading
                                       ? Row(
@@ -273,12 +240,10 @@ class _LoginPageState extends State<LoginPage> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: const [
-
                                             SizedBox(
                                               height: 22,
                                               width: 22,
-                                              child:
-                                                  CircularProgressIndicator(
+                                              child: CircularProgressIndicator(
                                                 strokeWidth: 2.5,
                                                 color: Colors.white,
                                               ),
@@ -290,8 +255,7 @@ class _LoginPageState extends State<LoginPage> {
                                               "Authenticating...",
                                               style: TextStyle(
                                                 fontSize: 16,
-                                                fontWeight:
-                                                    FontWeight.w600,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                           ],
@@ -313,18 +277,14 @@ class _LoginPageState extends State<LoginPage> {
                             //-----------------------------------
                             // GUEST LOGIN
                             //-----------------------------------
-
                             TextButton.icon(
-                              onPressed:
-                                  _isLoading ? null : _goToTranslator,
+                              onPressed: _isLoading ? null : _goToHome,
 
                               icon: const Icon(Icons.person_outline),
 
                               label: const Text(
                                 "Continue as Guest",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ),
                           ],
@@ -336,10 +296,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     const Text(
                       "MuteMate v1.0",
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
                     ),
 
                     const SizedBox(height: 8),
@@ -347,10 +304,7 @@ class _LoginPageState extends State<LoginPage> {
                     const Text(
                       "Powered by Flutter • Flask • TensorFlow",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                     ),
 
                     const SizedBox(height: 20),
