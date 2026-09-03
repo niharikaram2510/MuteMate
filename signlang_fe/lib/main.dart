@@ -4,7 +4,8 @@ import 'splash_screen.dart';
 import 'settings.dart';
 import 'live_translation_page.dart';
 import 'home_page.dart';
-
+import 'learn_page.dart';
+import 'phrasebook_page.dart';
 void main() {
   runApp(const MyApp());
 }
@@ -22,12 +23,9 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Arial',
 
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7C3AED),
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7C3AED)),
 
-        scaffoldBackgroundColor:
-            const Color(0xFFF7F8FC),
+        scaffoldBackgroundColor: const Color(0xFFF7F8FC),
       ),
 
       home: const SplashScreen(),
@@ -35,11 +33,10 @@ class MyApp extends StatelessWidget {
       routes: {
         '/home': (context) => const HomePage(),
 
-        '/live-translation': (context) =>
-            const LiveTranslationPage(),
-
-        '/settings': (context) =>
-            const SettingsPage(),
+        '/live-translation': (context) => const LiveTranslationPage(),
+        '/learn': (context) => const LearnPage(),
+        '/phrasebook': (context) => const PhrasebookPage(),
+        '/settings': (context) => const SettingsPage(),
       },
     );
   }

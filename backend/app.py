@@ -10,6 +10,7 @@ import json
 import cv2
 import mediapipe as mp
 from collections import deque, Counter
+import csv
 
 app = Flask(__name__)
 
@@ -26,7 +27,7 @@ try:
     print("⏳ Loading model...", flush=True)
 
     model = load_model(
-        "signlang_v2_model.keras",
+        "signlang_v3_model.keras",
         compile=False
     )
 
@@ -76,6 +77,23 @@ EXPECTED_FEATURES = 126
 # ===============================================================
 
 prediction_history = deque(maxlen=8)
+
+# ===============================================================
+# REAL-WORLD TRAINING SAMPLE COLLECTION
+# ===============================================================
+
+COLLECTION_DIR = "webcam_training_data"
+os.makedirs(COLLECTION_DIR, exist_ok=True)
+collection_active = False
+collection_label = None
+collection_count = 0
+MAX_SAMPLES_PER_SESSION = 100
+
+VALID_COLLECTION_LABELS = {
+    'A','B','BYE','C','D','E','F','G','H','HELLO','HOW ARE YOU','I',
+    'I LOVE YOU','J','K','L','M','N','O','P','Q','R','S','SORRY','T',
+    'THANK YOU','U','V','W','WELCOME','X','Y','Z'
+}
 
 
 # ===============================================================
@@ -207,9 +225,216 @@ def live_prediction():
         })
 
 
+
+# ===============================================================
+# COLLECTOR UI
+# ===============================================================
+
+@app.route('/collector', methods=['GET'])
+def collector():
+
+    labels_for_ui = [
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+        'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        'HELLO', 'BYE', 'HOW ARE YOU', 'I LOVE YOU',
+        'SORRY', 'THANK YOU', 'WELCOME'
+    ]
+
+    buttons = "".join(
+        f'<button onclick="startCollection({label!r})">{label}</button>'
+        for label in labels_for_ui
+    )
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MuteMate Sample Collector</title>
+<style>
+body {{
+    font-family: Arial, sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    background: #f6f7fb;
+    color: #171923;
+}}
+h1 {{ margin-bottom: 8px; }}
+.subtitle {{ color: #666; margin-bottom: 25px; }}
+.status {{
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+}}
+#status {{ font-size: 20px; font-weight: bold; }}
+#count {{ margin-top: 8px; color: #555; }}
+.grid {{
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+}}
+button {{
+    border: 0;
+    border-radius: 10px;
+    padding: 14px 8px;
+    background: #7c3aed;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}}
+button:hover {{ opacity: .9; }}
+.stop {{
+    margin-top: 20px;
+    background: #e3344b;
+    width: 100%;
+}}
+.note {{
+    margin-top: 20px;
+    background: #fff7e6;
+    padding: 15px;
+    border-radius: 10px;
+    color: #6b4b00;
+}}
+</style>
+</head>
+<body>
+
+<h1>MuteMate — Real-World Sample Collector</h1>
+<div class="subtitle">Collect 100 real webcam/MediaPipe samples for each sign.</div>
+
+<div class="status">
+    <div id="status">No collection running</div>
+    <div id="count">0 / {MAX_SAMPLES_PER_SESSION}</div>
+</div>
+
+<div class="grid">
+    {buttons}
+</div>
+
+<button class="stop" onclick="stopCollection()">Stop Collection</button>
+
+<div class="note">
+    Keep the MuteMate Live Translation camera page open in another tab.
+    This page controls collection; the live camera page sends frames to Flask.
+</div>
+
+<script>
+async function startCollection(label) {{
+    const response = await fetch(
+        '/start_collection?label=' + encodeURIComponent(label)
+    );
+    const data = await response.json();
+
+    if (!response.ok) {{
+        alert(data.error || 'Could not start collection');
+        return;
+    }}
+
+    updateStatus(data);
+}}
+
+async function stopCollection() {{
+    const response = await fetch('/stop_collection');
+    const data = await response.json();
+    updateStatus(data);
+}}
+
+async function refreshStatus() {{
+    const response = await fetch('/collection_status');
+    const data = await response.json();
+    updateStatus(data);
+}}
+
+function updateStatus(data) {{
+    if (data.collection_active) {{
+        document.getElementById('status').textContent =
+            'Collecting: ' + data.label;
+    }} else {{
+        document.getElementById('status').textContent =
+            data.label
+                ? 'Finished: ' + data.label
+                : 'No collection running';
+    }}
+
+    document.getElementById('count').textContent =
+        (data.count || 0) + ' / ' + (data.target || {MAX_SAMPLES_PER_SESSION});
+}}
+
+setInterval(refreshStatus, 500);
+refreshStatus();
+</script>
+
+</body>
+</html>
+"""
+
+# ===============================================================
+# START TRAINING SAMPLE COLLECTION
+# ===============================================================
+
+@app.route('/start_collection', methods=['GET'])
+def start_collection():
+    global collection_active, collection_label, collection_count
+    label = request.args.get("label", "").strip()
+    if not label:
+        return jsonify({"error":"Missing label. Example: /start_collection?label=HELLO"}), 400
+    if label not in VALID_COLLECTION_LABELS:
+        return jsonify({"error":f"Invalid label: {label}", "valid_labels":sorted(VALID_COLLECTION_LABELS)}), 400
+    collection_label = label
+
+    label_dir = os.path.join(
+        COLLECTION_DIR,
+        collection_label
+    )
+
+    os.makedirs(
+        label_dir,
+        exist_ok=True
+    )
+
+    existing_samples = [
+        name for name in os.listdir(label_dir)
+        if name.startswith("sample_") and name.endswith(".npy")
+    ]
+
+    collection_count = len(existing_samples)
+    collection_active = True
+    print(f"\n🟢 SAMPLE COLLECTION STARTED: {collection_label}", flush=True)
+    return jsonify({"collection_active":True,"label":collection_label,"count":collection_count,"target":MAX_SAMPLES_PER_SESSION})
+
+
+# ===============================================================
+# STOP TRAINING SAMPLE COLLECTION
+# ===============================================================
+
+@app.route('/stop_collection', methods=['GET'])
+def stop_collection():
+    global collection_active, collection_label
+    previous_label = collection_label
+    collection_active = False
+    collection_label = None
+    print(f"\n🟥 SAMPLE COLLECTION STOPPED: {previous_label}", flush=True)
+    return jsonify({"collection_active":False,"label":previous_label,"count":collection_count})
+
+
+# ===============================================================
+# COLLECTION STATUS
+# ===============================================================
+
+@app.route('/collection_status', methods=['GET'])
+def collection_status():
+    return jsonify({"collection_active":collection_active,"label":collection_label,"count":collection_count,"target":MAX_SAMPLES_PER_SESSION})
+
+
 # ===============================================================
 # BROWSER FRAME → AI PREDICTION
 # ===============================================================
+
 
 @app.route('/predict_frame', methods=['POST'])
 def predict_frame():
@@ -389,6 +614,24 @@ def predict_frame():
             features,
             dtype=np.float32
         )
+
+
+        # =======================================================
+        # COLLECT REAL-WORLD TRAINING SAMPLE
+        # =======================================================
+
+        global collection_active, collection_label, collection_count
+
+        if collection_active and collection_label and collection_count < MAX_SAMPLES_PER_SESSION:
+            label_dir = os.path.join(COLLECTION_DIR, collection_label)
+            os.makedirs(label_dir, exist_ok=True)
+            sample_path = os.path.join(label_dir, f"sample_{collection_count:04d}.npy")
+            np.save(sample_path, features_array)
+            collection_count += 1
+            print(f"📸 Collected {collection_label}: {collection_count}/{MAX_SAMPLES_PER_SESSION}", flush=True)
+            if collection_count >= MAX_SAMPLES_PER_SESSION:
+                collection_active = False
+                print(f"\n✅ Finished collecting {MAX_SAMPLES_PER_SESSION} samples for {collection_label}", flush=True)
 
         np.save(
             "latest_live_features.npy",

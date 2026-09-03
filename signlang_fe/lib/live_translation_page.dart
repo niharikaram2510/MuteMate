@@ -19,12 +19,12 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   static web.HTMLVideoElement? _videoElement;
 
   web.MediaStream? _stream;
-
   Timer? _predictionTimer;
 
   bool _cameraStarted = false;
   bool _loading = false;
   bool _isSendingFrame = false;
+  bool _isSpeaking = false;
 
   String? _error;
 
@@ -38,8 +38,6 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   void initState() {
     super.initState();
 
-    // IMPORTANT:
-    // Create the video element immediately.
     _videoElement ??= web.HTMLVideoElement();
 
     _videoElement!.autoplay = true;
@@ -58,12 +56,11 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   void _registerVideoView() {
     if (_viewRegistered) return;
 
-    ui_web.platformViewRegistry.registerViewFactory(
-      'mutemate-camera',
-      (int viewId) {
-        return _videoElement!;
-      },
-    );
+    ui_web.platformViewRegistry.registerViewFactory('mutemate-camera', (
+      int viewId,
+    ) {
+      return _videoElement!;
+    });
 
     _viewRegistered = true;
   }
@@ -85,12 +82,8 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
       final video = _videoElement;
 
       if (video == null) {
-        throw Exception(
-          'Camera video element could not be created.',
-        );
+        throw Exception('Camera video element could not be created.');
       }
-
-      debugPrint('📷 Requesting camera access...');
 
       final constraints = web.MediaStreamConstraints(
         video: true.toJS,
@@ -101,18 +94,11 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
           .getUserMedia(constraints)
           .toDart;
 
-      debugPrint('✅ Camera permission granted.');
-      debugPrint('✅ Camera stream received.');
-
       _stream = stream;
 
       video.srcObject = stream;
 
-      debugPrint('✅ Camera stream attached.');
-
       await video.play().toDart;
-
-      debugPrint('✅ Camera video playing.');
 
       if (!mounted) return;
 
@@ -120,15 +106,11 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
         _cameraStarted = true;
         _loading = false;
         _error = null;
-        _prediction = 'Show your hand to the camera';
+        _prediction = 'Show your hand';
       });
 
-      // Start AI prediction.
       _startPredictionLoop();
-
     } catch (e) {
-      debugPrint('❌ CAMERA ERROR: $e');
-
       _stopStreamOnly();
 
       if (!mounted) return;
@@ -148,21 +130,14 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   void _startPredictionLoop() {
     _predictionTimer?.cancel();
 
-    debugPrint('🤖 Starting prediction loop...');
-
-    _predictionTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) {
-        _sendFrameForPrediction();
-      },
-    );
+    _predictionTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      _sendFrameForPrediction();
+    });
   }
 
   void _stopPredictionLoop() {
     _predictionTimer?.cancel();
     _predictionTimer = null;
-
-    debugPrint('🛑 Prediction loop stopped.');
   }
 
   // ============================================================
@@ -170,119 +145,53 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   // ============================================================
 
   Future<void> _sendFrameForPrediction() async {
-    if (!_cameraStarted) {
-      return;
-    }
-
-    if (_isSendingFrame) {
-      return;
-    }
+    if (!_cameraStarted) return;
+    if (_isSendingFrame) return;
 
     final video = _videoElement;
 
     if (video == null) {
-      debugPrint('❌ Video element is null.');
-
       if (mounted) {
         setState(() {
           _error = 'Video element is not available.';
         });
       }
-
       return;
     }
 
     final videoWidth = video.videoWidth;
     final videoHeight = video.videoHeight;
 
-    debugPrint(
-      '📸 Capturing frame: ${videoWidth}x$videoHeight',
-    );
-
     if (videoWidth == 0 || videoHeight == 0) {
-      debugPrint('❌ Video dimensions are 0.');
-
       if (mounted) {
         setState(() {
-          _error =
-              'Camera is running, but video is not ready.';
+          _error = 'Camera is not ready yet.';
         });
       }
-
       return;
     }
 
     _isSendingFrame = true;
 
     try {
-      // --------------------------------------------------------
-      // CREATE CANVAS
-      // --------------------------------------------------------
-
       final canvas = web.HTMLCanvasElement();
 
       canvas.width = 640;
       canvas.height = 480;
 
-      final context =
-          canvas.getContext('2d')
-              as web.CanvasRenderingContext2D;
+      final context = canvas.getContext('2d') as web.CanvasRenderingContext2D;
 
-      debugPrint('🎨 Canvas created.');
+      context.drawImage(video, 0, 0, 640, 480);
 
-      // --------------------------------------------------------
-      // COPY CAMERA FRAME TO CANVAS
-      // --------------------------------------------------------
-
-      context.drawImage(
-        video,
-        0,
-        0,
-        640,
-        480,
-      );
-
-      debugPrint(
-        '🖼️ Camera frame copied to canvas.',
-      );
-
-      // --------------------------------------------------------
-      // CONVERT TO JPEG
-      // --------------------------------------------------------
-
-      final dataUrl = canvas.toDataURL(
-        'image/jpeg',
-        0.7.toJS,
-      );
-
-      debugPrint(
-        '📦 Frame converted to JPEG.',
-      );
+      final dataUrl = canvas.toDataURL('image/jpeg', 0.7.toJS);
 
       final base64Data = dataUrl.split(',').last;
 
       final imageBytes = base64Decode(base64Data);
 
-      debugPrint(
-        '📏 Frame size: ${imageBytes.length} bytes',
-      );
+      final url = Uri.parse('$backendUrl/predict_frame');
 
-      // --------------------------------------------------------
-      // SEND TO FLASK
-      // --------------------------------------------------------
-
-      final url = Uri.parse(
-        '$backendUrl/predict_frame',
-      );
-
-      debugPrint(
-        '📤 Sending frame to Flask...',
-      );
-
-      final request = http.MultipartRequest(
-        'POST',
-        url,
-      );
+      final request = http.MultipartRequest('POST', url);
 
       request.files.add(
         http.MultipartFile.fromBytes(
@@ -292,92 +201,44 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
         ),
       );
 
-      final streamedResponse =
-          await request.send();
+      final streamedResponse = await request.send();
 
-      final response =
-          await http.Response.fromStream(
-        streamedResponse,
-      );
-
-      debugPrint(
-        '📥 Flask response: ${response.statusCode}',
-      );
-
-      debugPrint(
-        '📥 Flask body: ${response.body}',
-      );
-
-      // --------------------------------------------------------
-      // HANDLE ERROR
-      // --------------------------------------------------------
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode != 200) {
         if (mounted) {
           setState(() {
-            _error =
-                'Flask returned ${response.statusCode}';
+            _error = 'Flask returned ${response.statusCode}';
           });
         }
-
         return;
       }
 
-      // --------------------------------------------------------
-      // DECODE RESPONSE
-      // --------------------------------------------------------
-
       final data = jsonDecode(response.body);
 
-      final prediction =
-          data['prediction']?.toString();
+      final prediction = data['prediction']?.toString();
 
-      final confidence =
-          (data['confidence'] as num?)
-              ?.toDouble() ??
-          0.0;
+      final confidence = (data['confidence'] as num?)?.toDouble() ?? 0.0;
 
-      final handDetected =
-          data['hand_detected'] == true;
-
-      debugPrint(
-        '🤖 Prediction: $prediction',
-      );
-
-      debugPrint(
-        '✋ Hand detected: $handDetected',
-      );
-
-      debugPrint(
-        '🎯 Confidence: '
-        '${(confidence * 100).toStringAsFixed(1)}%',
-      );
+      final handDetected = data['hand_detected'] == true;
 
       if (!mounted) return;
 
       setState(() {
-        _prediction = prediction ??
-            (handDetected
-                ? 'Unknown'
-                : 'Show your hand to the camera');
+        _prediction =
+            prediction ?? (handDetected ? 'Unknown' : 'Show your hand');
 
         _confidence = confidence;
         _handDetected = handDetected;
 
         _error = null;
       });
-
     } catch (e) {
-      debugPrint(
-        '❌ FRAME PREDICTION ERROR: $e',
-      );
-
-      if (mounted) {
+      if (mounted && _cameraStarted) {
         setState(() {
           _error = 'Prediction error: $e';
         });
       }
-
     } finally {
       _isSendingFrame = false;
     }
@@ -408,6 +269,7 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   }
 
   void _stopCamera() {
+    _stopSpeech();
     _stopStreamOnly();
 
     if (!mounted) return;
@@ -423,10 +285,126 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
     });
   }
 
-  @override
-  void dispose() {
-    _stopStreamOnly();
-    super.dispose();
+  // ============================================================
+  // VOICE OUTPUT
+  // ============================================================
+
+  void _speakPrediction() {
+    if (!_handDetected) return;
+
+    final detected = _prediction.trim();
+
+    if (detected.isEmpty || detected == 'Unknown') return;
+
+    final speechText = _speechTextForSign(detected);
+
+    // Stop any previous speech first.
+    web.window.speechSynthesis.cancel();
+
+    final utterance = web.SpeechSynthesisUtterance(speechText);
+
+    utterance.lang = 'en-US';
+
+    // Slightly slower so short signs/letters are clearer.
+    utterance.rate = 0.72;
+    utterance.pitch = 1.0;
+
+    utterance.onend = ((web.Event event) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSpeaking = false;
+      });
+    }).toJS;
+
+    utterance.onerror = ((web.Event event) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSpeaking = false;
+      });
+    }).toJS;
+
+    setState(() {
+      _isSpeaking = true;
+    });
+
+    web.window.speechSynthesis.speak(utterance);
+  }
+
+  String _speechTextForSign(String sign) {
+    const letters = {
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+      'I',
+      'J',
+      'K',
+      'L',
+      'M',
+      'N',
+      'O',
+      'P',
+      'Q',
+      'R',
+      'S',
+      'T',
+      'U',
+      'V',
+      'W',
+      'X',
+      'Y',
+      'Z',
+    };
+
+    if (letters.contains(sign.toUpperCase())) {
+      return 'Letter ${sign.toUpperCase()}';
+    }
+
+    if (sign == 'I LOVE YOU') {
+      return 'I love you';
+    }
+
+    if (sign == 'HOW ARE YOU') {
+      return 'How are you';
+    }
+
+    if (sign == 'THANK YOU') {
+      return 'Thank you';
+    }
+
+    if (sign == 'WELCOME') {
+      return 'Welcome';
+    }
+
+    if (sign == 'SORRY') {
+      return 'Sorry';
+    }
+
+    return sign;
+  }
+
+  void _stopSpeech() {
+    web.window.speechSynthesis.cancel();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isSpeaking = false;
+    });
+  }
+
+  void _toggleSpeech() {
+    if (_isSpeaking) {
+      _stopSpeech();
+    } else {
+      _speakPrediction();
+    }
   }
 
   // ============================================================
@@ -445,60 +423,85 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
 
         title: const Text(
           'Live Translation',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
+
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 24),
+
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+
+                  decoration: BoxDecoration(
+                    color: _cameraStarted
+                        ? const Color(0xFF00A86B)
+                        : const Color(0xFF9CA3AF),
+
+                    shape: BoxShape.circle,
+                  ),
+                ),
+
+                const SizedBox(width: 7),
+
+                Text(
+                  _cameraStarted ? 'Camera Ready' : 'Camera Off',
+
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
 
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 950,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
 
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                24,
-                20,
-                24,
-                24,
-              ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
 
-              child: Column(
-                children: [
-                  _buildHeader(),
+                  children: [
+                    // ==================================================
+                    // CAMERA - 50%
+                    // ==================================================
+                    Expanded(flex: 1, child: _buildCameraPanel()),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(width: 24),
 
-                  Expanded(
-                    child: _buildCameraCard(),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  _buildTranslationCard(),
-
-                  const SizedBox(height: 18),
-
-                  _buildCameraButton(),
-
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFDC3545),
-                        fontSize: 13,
-                      ),
-                    ),
+                    // ==================================================
+                    // TRANSLATION - 50%
+                    // ==================================================
+                    Expanded(flex: 1, child: _buildTranslationPanel()),
                   ],
-                ],
+                ),
               ),
-            ),
+
+              if (_error != null && _cameraStarted) ...[
+                const SizedBox(height: 12),
+
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+
+                  style: const TextStyle(
+                    color: Color(0xFFDC3545),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -506,59 +509,21 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   }
 
   // ============================================================
-  // HEADER
+  // CAMERA PANEL
   // ============================================================
 
-  Widget _buildHeader() {
-    return const Column(
-      children: [
-        Text(
-          'Live Sign Translation',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF151922),
-          ),
-        ),
-
-        SizedBox(height: 7),
-
-        Text(
-          'Show your sign to the camera and MuteMate '
-          'will translate it in real time.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 15,
-            color: Color(0xFF6B7280),
-            height: 1.4,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // CAMERA CARD
-  // ============================================================
-
-  Widget _buildCameraCard() {
+  Widget _buildCameraPanel() {
     return Container(
-      width: double.infinity,
-
-      constraints: const BoxConstraints(
-        minHeight: 280,
-      ),
-
       decoration: BoxDecoration(
         color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(26),
+
+        borderRadius: BorderRadius.circular(24),
 
         boxShadow: const [
           BoxShadow(
             color: Colors.black12,
-            blurRadius: 20,
-            offset: Offset(0, 8),
+            blurRadius: 16,
+            offset: Offset(0, 6),
           ),
         ],
       ),
@@ -569,76 +534,31 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
         children: [
           if (_cameraStarted)
             const Positioned.fill(
-              child: HtmlElementView(
-                viewType: 'mutemate-camera',
-              ),
+              child: HtmlElementView(viewType: 'mutemate-camera'),
             )
           else
-            const Positioned.fill(
-              child: Center(
-                child: Icon(
-                  Icons.videocam_outlined,
-                  color: Colors.white38,
-                  size: 72,
-                ),
-              ),
-            ),
+            Positioned.fill(child: _buildCameraOffState()),
 
-          if (!_cameraStarted && !_loading)
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 30,
-
-              child: Column(
-                children: [
-                  Text(
-                    'Camera is off',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-
-                  SizedBox(height: 5),
-
-                  Text(
-                    'Open the camera to start translating',
-                    style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
+          // LIVE indicator
           if (_cameraStarted)
             Positioned(
-              top: 18,
-              left: 18,
+              top: 16,
+              left: 16,
 
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: 11,
                   vertical: 7,
                 ),
 
                 decoration: BoxDecoration(
                   color: Colors.black54,
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(20),
                 ),
 
                 child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-
                   children: [
-                    Icon(
-                      Icons.circle,
-                      color: Colors.red,
-                      size: 9,
-                    ),
+                    Icon(Icons.circle, color: Color(0xFFFF4D4D), size: 8),
 
                     SizedBox(width: 7),
 
@@ -646,12 +566,41 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
                       'LIVE',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
+                        letterSpacing: 0.7,
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+
+          // STOP CAMERA button
+          if (_cameraStarted)
+            Positioned(
+              right: 16,
+              bottom: 16,
+
+              child: SizedBox(
+                width: 48,
+                height: 48,
+
+                child: Material(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(14),
+
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+
+                    onTap: _stopCamera,
+
+                    child: const Icon(
+                      Icons.stop_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -662,9 +611,7 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
                 color: Color(0x66111827),
 
                 child: Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                  ),
+                  child: CircularProgressIndicator(color: Colors.white),
                 ),
               ),
             ),
@@ -674,201 +621,553 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   }
 
   // ============================================================
-  // TRANSLATION CARD
+  // CAMERA OFF STATE
   // ============================================================
 
-  Widget _buildTranslationCard() {
+  Widget _buildCameraOffState() {
+    return Container(
+      color: const Color(0xFF111827),
+
+      child: Stack(
+        children: [
+          // Subtle background decoration
+          Positioned(
+            top: -80,
+            right: -80,
+
+            child: Container(
+              width: 220,
+              height: 220,
+
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+
+          Positioned(
+            bottom: -100,
+            left: -80,
+
+            child: Container(
+              width: 240,
+              height: 240,
+
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF00E5FF).withValues(alpha: 0.04),
+              ),
+            ),
+          ),
+
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+
+                children: [
+                  // Camera icon
+                  Container(
+                    width: 78,
+                    height: 78,
+
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C3AED).withValues(alpha: 0.14),
+
+                      shape: BoxShape.circle,
+
+                      border: Border.all(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
+
+                        width: 1.5,
+                      ),
+                    ),
+
+                    child: const Icon(
+                      Icons.videocam_outlined,
+                      color: Color(0xFFB794F4),
+                      size: 34,
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  const Text(
+                    'Camera is Off',
+
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  const Text(
+                    'Start the camera to begin\nlive sign translation.',
+
+                    textAlign: TextAlign.center,
+
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                  ),
+
+                  const SizedBox(height: 26),
+
+                  // MAIN OPEN CAMERA BUTTON
+                  SizedBox(
+                    width: 220,
+                    height: 52,
+
+                    child: ElevatedButton.icon(
+                      onPressed: _loading ? null : _startCamera,
+
+                      icon: const Icon(Icons.videocam_outlined, size: 21),
+
+                      label: const Text('Open Camera'),
+
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7C3AED),
+
+                        foregroundColor: Colors.white,
+
+                        disabledBackgroundColor: const Color(0xFF4B5563),
+
+                        elevation: 4,
+
+                        shadowColor: const Color(
+                          0xFF7C3AED,
+                        ).withValues(alpha: 0.4),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+
+                        textStyle: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 38),
+
+                  // FEATURES
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+
+                    children: [
+                      _buildCameraFeature(Icons.radar_outlined, 'Real-time'),
+
+                      _buildFeatureDivider(),
+
+                      _buildCameraFeature(
+                        Icons.auto_awesome_outlined,
+                        'AI Detection',
+                      ),
+
+                      _buildFeatureDivider(),
+
+                      _buildCameraFeature(Icons.volume_up_outlined, 'Voice'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraFeature(IconData icon, String text) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF9B6BFF), size: 22),
+
+          const SizedBox(height: 7),
+
+          Text(
+            text,
+            textAlign: TextAlign.center,
+
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureDivider() {
+    return Container(width: 1, height: 34, color: Colors.white12);
+  }
+
+  // ============================================================
+  // TRANSLATION PANEL
+  // ============================================================
+
+  Widget _buildTranslationPanel() {
+    final percentage = (_confidence * 100).clamp(0.0, 100.0);
+
     final hasPrediction =
+        _cameraStarted &&
         _handDetected &&
         _prediction.isNotEmpty &&
         _prediction != 'Unknown';
 
-    String statusText;
-
-    if (!_cameraStarted) {
-      statusText = 'Waiting for translation...';
-    } else if (!_handDetected) {
-      statusText = 'Show your hand to the camera';
-    } else {
-      statusText = _prediction;
-    }
-
     return Container(
-      width: double.infinity,
-
-      padding: const EdgeInsets.symmetric(
-        horizontal: 22,
-        vertical: 18,
-      ),
+      padding: const EdgeInsets.all(34),
 
       decoration: BoxDecoration(
         color: Colors.white,
 
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
 
-        border: Border.all(
-          color: const Color(0xFFE5E7EB),
-        ),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
 
         boxShadow: const [
           BoxShadow(
             color: Colors.black12,
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            blurRadius: 16,
+            offset: Offset(0, 6),
           ),
         ],
       ),
 
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
-          Container(
-            width: 46,
-            height: 46,
+          // ========================================================
+          // TITLE
+          // ========================================================
+          const Text(
+            'DETECTED SIGN',
 
-            decoration: BoxDecoration(
-              color: const Color(0xFF7C3AED)
-                  .withValues(alpha: 0.1),
-
-              borderRadius: BorderRadius.circular(14),
-            ),
-
-            child: const Icon(
-              Icons.translate_rounded,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF7C3AED),
+              letterSpacing: 1.2,
             ),
           ),
 
-          const SizedBox(width: 14),
+          const SizedBox(height: 18),
 
+          // ========================================================
+          // MAIN SIGN
+          // ========================================================
           Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
 
-              children: [
-                const Text(
-                  'Detected Sign',
-
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  statusText,
-
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF151922),
-                  ),
-                ),
-
-                if (hasPrediction) ...[
-                  const SizedBox(height: 4),
-
+                children: [
                   Text(
-                    'Confidence: '
-                    '${(_confidence * 100).toStringAsFixed(1)}%',
+                    hasPrediction
+                        ? _prediction
+                        : _cameraStarted
+                        ? 'Show your hand'
+                        : '—',
 
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
+                    textAlign: TextAlign.center,
+
+                    style: TextStyle(
+                      fontSize: hasPrediction ? 56 : 30,
+
+                      fontWeight: FontWeight.w800,
+
+                      color: hasPrediction
+                          ? const Color(0xFF151922)
+                          : const Color(0xFF9CA3AF),
                     ),
                   ),
+
+                  if (hasPrediction) ...[
+                    const SizedBox(height: 12),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00A86B).withValues(alpha: 0.1),
+
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+
+                      child: const Text(
+                        'SIGN DETECTED',
+
+                        style: TextStyle(
+                          color: Color(0xFF008A58),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
 
-          if (_cameraStarted)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
+          const SizedBox(height: 20),
 
-              decoration: BoxDecoration(
-                color: hasPrediction
-                    ? const Color(0xFF00A86B)
-                        .withValues(alpha: 0.1)
-                    : const Color(0xFF7C3AED)
-                        .withValues(alpha: 0.1),
+          // ========================================================
+          // CONFIDENCE
+          // ========================================================
+          _buildConfidenceSection(percentage, hasPrediction),
 
-                borderRadius: BorderRadius.circular(20),
-              ),
+          const SizedBox(height: 26),
 
-              child: Text(
-                hasPrediction
-                    ? 'DETECTED'
-                    : 'SCANNING',
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
 
-                style: TextStyle(
-                  color: hasPrediction
-                      ? const Color(0xFF008A58)
-                      : const Color(0xFF7C3AED),
+          const SizedBox(height: 22),
 
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+          // ========================================================
+          // RECOGNITION DETAILS
+          // ========================================================
+          const Text(
+            'RECOGNITION DETAILS',
+
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF6B7280),
+              letterSpacing: 1,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          _buildDetailRow(
+            Icons.pan_tool_outlined,
+            'Hand detected',
+            _handDetected ? 'Yes' : 'No',
+            _handDetected,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildDetailRow(
+            Icons.memory_outlined,
+            'Model status',
+            hasPrediction ? 'Stable' : 'Waiting',
+            hasPrediction,
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildDetailRow(
+            Icons.speed_outlined,
+            'Confidence',
+            hasPrediction ? '${percentage.toStringAsFixed(1)}%' : '—',
+            hasPrediction,
+          ),
+
+          const SizedBox(height: 28),
+
+          // ========================================================
+          // ACTIONS
+          // ========================================================
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 56,
+
+                  child: ElevatedButton.icon(
+                    onPressed: hasPrediction ? _toggleSpeech : null,
+
+                    icon: Icon(
+                      _isSpeaking
+                          ? Icons.stop_rounded
+                          : Icons.volume_up_outlined,
+                      size: 21,
+                    ),
+
+                    label: Text(
+                      _isSpeaking ? 'Speaking...  Stop' : 'Speak Sign',
+                    ),
+
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isSpeaking
+                          ? const Color(0xFF5B21B6)
+                          : const Color(0xFF7C3AED),
+
+                      foregroundColor: Colors.white,
+
+                      disabledBackgroundColor: const Color(0xFFE5E7EB),
+
+                      disabledForegroundColor: const Color(0xFF9CA3AF),
+
+                      elevation: 0,
+
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+
+                      textStyle: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+
+              const SizedBox(width: 12),
+
+              SizedBox(
+                width: 56,
+                height: 56,
+
+                child: OutlinedButton(
+                  onPressed: _cameraStarted ? _stopCamera : _startCamera,
+
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF151922),
+
+                    side: const BorderSide(color: Color(0xFFD1D5DB)),
+
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+
+                    padding: EdgeInsets.zero,
+                  ),
+
+                  child: Icon(
+                    _cameraStarted
+                        ? Icons.stop_rounded
+                        : Icons.videocam_outlined,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
   // ============================================================
-  // CAMERA BUTTON
+  // CONFIDENCE SECTION
   // ============================================================
 
-  Widget _buildCameraButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
+  Widget _buildConfidenceSection(double percentage, bool hasPrediction) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
 
-      child: ElevatedButton.icon(
-        onPressed: _loading
-            ? null
-            : (_cameraStarted
-                ? _stopCamera
-                : _startCamera),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
-        icon: Icon(
-          _cameraStarted
-              ? Icons.stop_circle_outlined
-              : Icons.videocam_outlined,
+          children: [
+            const Text(
+              'CONFIDENCE',
+
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF6B7280),
+                letterSpacing: 1,
+              ),
+            ),
+
+            Text(
+              hasPrediction ? '${percentage.toStringAsFixed(1)}%' : '—',
+
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF151922),
+              ),
+            ),
+          ],
         ),
 
-        label: Text(
-          _cameraStarted
-              ? 'Stop Camera'
-              : 'Open Camera',
-        ),
+        const SizedBox(height: 10),
 
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _cameraStarted
-              ? const Color(0xFFDC3545)
-              : const Color(0xFF7C3AED),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
 
-          foregroundColor: Colors.white,
+          child: LinearProgressIndicator(
+            value: hasPrediction ? percentage / 100 : 0,
 
-          elevation: 0,
+            minHeight: 8,
 
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            backgroundColor: const Color(0xFFEDEEF2),
+
+            valueColor: const AlwaysStoppedAnimation(Color(0xFF7C3AED)),
           ),
-
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
         ),
-      ),
+      ],
     );
+  }
+
+  // ============================================================
+  // DETAIL ROW
+  // ============================================================
+
+  Widget _buildDetailRow(
+    IconData icon,
+    String title,
+    String value,
+    bool active,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: active ? const Color(0xFF7C3AED) : const Color(0xFF9CA3AF),
+        ),
+
+        const SizedBox(width: 10),
+
+        Expanded(
+          child: Text(
+            title,
+
+            style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+          ),
+        ),
+
+        Text(
+          value,
+
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: active ? const Color(0xFF151922) : const Color(0xFF9CA3AF),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    web.window.speechSynthesis.cancel();
+    _stopStreamOnly();
+    super.dispose();
   }
 }
