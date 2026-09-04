@@ -26,6 +26,13 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   bool _isSendingFrame = false;
   bool _isSpeaking = false;
 
+  // Automatic voice output
+  static const double _speechConfidenceThreshold = 0.90;
+  static const Duration _speechCooldown = Duration(milliseconds: 1200);
+
+  String? _lastSpokenSign;
+  DateTime? _lastSpeechTime;
+
   String? _error;
 
   String _prediction = 'Waiting for translation...';
@@ -76,6 +83,8 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
       _prediction = 'Starting camera...';
       _confidence = 0.0;
       _handDetected = false;
+      _lastSpokenSign = null;
+      _lastSpeechTime = null;
     });
 
     try {
@@ -224,15 +233,21 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
 
       if (!mounted) return;
 
-      setState(() {
-        _prediction =
-            prediction ?? (handDetected ? 'Unknown' : 'Show your hand');
+      final detectedPrediction =
+          prediction ?? (handDetected ? 'Unknown' : 'Show your hand');
 
+      setState(() {
+        _prediction = detectedPrediction;
         _confidence = confidence;
         _handDetected = handDetected;
-
         _error = null;
       });
+
+      _checkAutomaticSpeech(
+        detectedPrediction,
+        confidence,
+        handDetected,
+      );
     } catch (e) {
       if (mounted && _cameraStarted) {
         setState(() {
@@ -242,6 +257,44 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
     } finally {
       _isSendingFrame = false;
     }
+  }
+
+  // ============================================================
+  // AUTOMATIC VOICE OUTPUT
+  // ============================================================
+
+  void _checkAutomaticSpeech(
+    String prediction,
+    double confidence,
+    bool handDetected,
+  ) {
+    if (!handDetected) {
+      _lastSpokenSign = null;
+      return;
+    }
+
+    final detected = prediction.trim();
+
+    if (detected.isEmpty || detected == 'Unknown') return;
+
+    // Only speak predictions that are confident enough.
+    if (confidence < _speechConfidenceThreshold) return;
+
+    // Don't repeat the same sign while it remains on screen.
+    if (detected == _lastSpokenSign) return;
+
+    final now = DateTime.now();
+
+    // Prevent rapid-fire speech when the model changes predictions quickly.
+    if (_lastSpeechTime != null &&
+        now.difference(_lastSpeechTime!) < _speechCooldown) {
+      return;
+    }
+
+    _lastSpokenSign = detected;
+    _lastSpeechTime = now;
+
+    _speakPrediction(detected);
   }
 
   // ============================================================
@@ -282,6 +335,8 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
       _prediction = 'Waiting for translation...';
       _confidence = 0.0;
       _handDetected = false;
+      _lastSpokenSign = null;
+      _lastSpeechTime = null;
     });
   }
 
@@ -289,10 +344,8 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
   // VOICE OUTPUT
   // ============================================================
 
-  void _speakPrediction() {
+  void _speakPrediction(String detected) {
     if (!_handDetected) return;
-
-    final detected = _prediction.trim();
 
     if (detected.isEmpty || detected == 'Unknown') return;
 
@@ -397,14 +450,6 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
     setState(() {
       _isSpeaking = false;
     });
-  }
-
-  void _toggleSpeech() {
-    if (_isSpeaking) {
-      _stopSpeech();
-    } else {
-      _speakPrediction();
-    }
   }
 
   // ============================================================
@@ -829,7 +874,7 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
         _prediction != 'Unknown';
 
     return Container(
-      padding: const EdgeInsets.all(34),
+      padding: const EdgeInsets.all(24),
 
       decoration: BoxDecoration(
         color: Colors.white,
@@ -865,7 +910,7 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
 
           // ========================================================
           // MAIN SIGN
@@ -886,7 +931,7 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
                     textAlign: TextAlign.center,
 
                     style: TextStyle(
-                      fontSize: hasPrediction ? 56 : 30,
+                      fontSize: hasPrediction ? 42 : 26,
 
                       fontWeight: FontWeight.w800,
 
@@ -928,18 +973,18 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
 
           // ========================================================
           // CONFIDENCE
           // ========================================================
           _buildConfidenceSection(percentage, hasPrediction),
 
-          const SizedBox(height: 26),
+          const SizedBox(height: 14),
 
           const Divider(height: 1, color: Color(0xFFE5E7EB)),
 
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
 
           // ========================================================
           // RECOGNITION DETAILS
@@ -982,53 +1027,75 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
             hasPrediction,
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 14),
 
           // ========================================================
-          // ACTIONS
+          // VOICE OUTPUT + CAMERA CONTROL
           // ========================================================
           Row(
             children: [
               Expanded(
-                child: SizedBox(
-                  height: 56,
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
 
-                  child: ElevatedButton.icon(
-                    onPressed: hasPrediction ? _toggleSpeech : null,
+                  decoration: BoxDecoration(
+                    color: _isSpeaking
+                        ? const Color(0xFF7C3AED).withValues(alpha: 0.10)
+                        : const Color(0xFFF7F8FC),
 
-                    icon: Icon(
-                      _isSpeaking
-                          ? Icons.stop_rounded
-                          : Icons.volume_up_outlined,
-                      size: 21,
+                    borderRadius: BorderRadius.circular(14),
+
+                    border: Border.all(
+                      color: _isSpeaking
+                          ? const Color(0xFF7C3AED).withValues(alpha: 0.25)
+                          : const Color(0xFFE5E7EB),
                     ),
+                  ),
 
-                    label: Text(
-                      _isSpeaking ? 'Speaking...  Stop' : 'Speak Sign',
-                    ),
-
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isSpeaking
-                          ? const Color(0xFF5B21B6)
-                          : const Color(0xFF7C3AED),
-
-                      foregroundColor: Colors.white,
-
-                      disabledBackgroundColor: const Color(0xFFE5E7EB),
-
-                      disabledForegroundColor: const Color(0xFF9CA3AF),
-
-                      elevation: 0,
-
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isSpeaking
+                            ? Icons.volume_up_rounded
+                            : Icons.record_voice_over_outlined,
+                        size: 21,
+                        color: const Color(0xFF7C3AED),
                       ),
 
-                      textStyle: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                      const SizedBox(width: 11),
+
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isSpeaking
+                                  ? 'Speaking...'
+                                  : 'Voice output: Automatic',
+
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF151922),
+                              ),
+                            ),
+
+                            const SizedBox(height: 2),
+
+                            Text(
+                              'Speaks confident signs automatically',
+
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -1036,8 +1103,8 @@ class _LiveTranslationPageState extends State<LiveTranslationPage> {
               const SizedBox(width: 12),
 
               SizedBox(
-                width: 56,
-                height: 56,
+                width: 48,
+                height: 48,
 
                 child: OutlinedButton(
                   onPressed: _cameraStarted ? _stopCamera : _startCamera,

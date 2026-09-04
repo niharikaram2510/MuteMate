@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'live_translation_page.dart';
 import 'learn_page.dart';
-import 'phrasebook_page.dart';
 import 'settings.dart';
 import 'theme/app_theme.dart';
 
@@ -27,15 +26,6 @@ class HomePage extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => const LearnPage(),
-      ),
-    );
-  }
-
-  void _openPhrasebook(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const PhrasebookPage(),
       ),
     );
   }
@@ -120,14 +110,6 @@ class HomePage extends StatelessWidget {
               },
             ),
 
-            _buildNavItem(
-              label: 'Phrasebook',
-              active: false,
-              onTap: () {
-                _openPhrasebook(context);
-              },
-            ),
-
             const SizedBox(width: 10),
 
             Container(
@@ -165,12 +147,10 @@ class HomePage extends StatelessWidget {
               horizontal: isDesktop ? 48 : 20,
               vertical: isDesktop ? 32 : 24,
             ),
-
             child: ConstrainedBox(
               constraints: const BoxConstraints(
                 maxWidth: 1100,
               ),
-
               child: Column(
                 children: [
                   // =================================================
@@ -191,9 +171,7 @@ class HomePage extends StatelessWidget {
                             action: 'Start Translating',
                             highlighted: true,
                             onTap: () {
-                              _openLiveTranslation(
-                                context,
-                              );
+                              _openLiveTranslation(context);
                             },
                           ),
                         ),
@@ -202,11 +180,10 @@ class HomePage extends StatelessWidget {
 
                         Expanded(
                           child: _buildFeatureCard(
-                            icon:
-                                Icons.sign_language_rounded,
+                            icon: Icons.sign_language_rounded,
                             title: 'Learn Signs',
                             description:
-                                'Explore supported signs and their meanings.',
+                                'Explore signs and their meanings.',
                             action: 'Explore',
                             onTap: () {
                               _openLearn(context);
@@ -226,20 +203,17 @@ class HomePage extends StatelessWidget {
                           action: 'Start Translating',
                           highlighted: true,
                           onTap: () {
-                            _openLiveTranslation(
-                              context,
-                            );
+                            _openLiveTranslation(context);
                           },
                         ),
 
                         const SizedBox(height: 16),
 
                         _buildFeatureCard(
-                          icon:
-                              Icons.sign_language_rounded,
+                          icon: Icons.sign_language_rounded,
                           title: 'Learn Signs',
                           description:
-                              'Explore supported signs and their meanings.',
+                              'Explore signs and their meanings.',
                           action: 'Explore',
                           onTap: () {
                             _openLearn(context);
@@ -247,18 +221,6 @@ class HomePage extends StatelessWidget {
                         ),
                       ],
                     ),
-
-                  const SizedBox(height: 20),
-
-                  // =================================================
-                  // PHRASEBOOK
-                  // =================================================
-
-                  _buildPhrasebookCard(
-                    onTap: () {
-                      _openPhrasebook(context);
-                    },
-                  ),
                 ],
               ),
             ),
@@ -281,25 +243,20 @@ class HomePage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: 3,
       ),
-
       child: TextButton(
         onPressed: onTap,
-
         style: TextButton.styleFrom(
           foregroundColor: active
               ? AppTheme.secondary
               : AppTheme.textMuted,
-
           padding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 10,
           ),
-
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
         ),
-
         child: Text(
           label,
           style: TextStyle(
@@ -327,17 +284,14 @@ class HomePage extends StatelessWidget {
   }) {
     return Material(
       color: AppTheme.surface,
-
       borderRadius: BorderRadius.circular(22),
 
       child: InkWell(
         onTap: onTap,
-
         borderRadius: BorderRadius.circular(22),
 
         child: Container(
           width: double.infinity,
-
           padding: const EdgeInsets.all(28),
 
           decoration: BoxDecoration(
@@ -361,18 +315,13 @@ class HomePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
-
             children: [
-              // Icon
-
               Container(
                 width: 58,
                 height: 58,
 
                 decoration: BoxDecoration(
-                  color:
-                      const Color(0xFFF0EBFF),
-
+                  color: const Color(0xFFF0EBFF),
                   borderRadius:
                       BorderRadius.circular(17),
                 ),
@@ -386,11 +335,8 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 22),
 
-              // Title
-
               Text(
                 title,
-
                 style: const TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 21,
@@ -400,11 +346,8 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // Description
-
               Text(
                 description,
-
                 style: const TextStyle(
                   color: AppTheme.textMuted,
                   fontSize: 14,
@@ -414,13 +357,10 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 22),
 
-              // Action
-
               Row(
                 children: [
                   Text(
                     action,
-
                     style: const TextStyle(
                       color: AppTheme.secondary,
                       fontSize: 14,
@@ -436,112 +376,6 @@ class HomePage extends StatelessWidget {
                     size: 18,
                   ),
                 ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==============================================================
-  // PHRASEBOOK CARD
-  // ==============================================================
-
-  Widget _buildPhrasebookCard({
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: AppTheme.surface,
-
-      borderRadius: BorderRadius.circular(22),
-
-      child: InkWell(
-        onTap: onTap,
-
-        borderRadius: BorderRadius.circular(22),
-
-        child: Container(
-          width: double.infinity,
-
-          padding: const EdgeInsets.symmetric(
-            horizontal: 28,
-            vertical: 22,
-          ),
-
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-
-            borderRadius: BorderRadius.circular(22),
-
-            border: Border.all(
-              color: const Color(0xFFE5E7EB),
-            ),
-
-            boxShadow: [
-              AppTheme.softShadow(),
-            ],
-          ),
-
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0EBFF),
-
-                  borderRadius:
-                      BorderRadius.circular(17),
-                ),
-
-                child: const Icon(
-                  Icons.menu_book_rounded,
-                  color: AppTheme.secondary,
-                  size: 29,
-                ),
-              ),
-
-              const SizedBox(width: 18),
-
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-
-                  children: [
-                    Text(
-                      'Phrasebook',
-
-                      style: TextStyle(
-                        color:
-                            AppTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight:
-                            FontWeight.w700,
-                      ),
-                    ),
-
-                    SizedBox(height: 5),
-
-                    Text(
-                      'Useful signs for everyday communication.',
-
-                      style: TextStyle(
-                        color:
-                            AppTheme.textMuted,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Icon(
-                Icons.arrow_forward_rounded,
-                color: AppTheme.secondary,
-                size: 21,
               ),
             ],
           ),

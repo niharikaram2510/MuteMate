@@ -5,7 +5,7 @@ import 'settings.dart';
 import 'live_translation_page.dart';
 import 'home_page.dart';
 import 'learn_page.dart';
-import 'phrasebook_page.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -35,7 +35,7 @@ class MyApp extends StatelessWidget {
 
         '/live-translation': (context) => const LiveTranslationPage(),
         '/learn': (context) => const LearnPage(),
-        '/phrasebook': (context) => const PhrasebookPage(),
+      
         '/settings': (context) => const SettingsPage(),
       },
     );

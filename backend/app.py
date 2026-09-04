@@ -11,8 +11,35 @@ import cv2
 import mediapipe as mp
 from collections import deque, Counter
 import csv
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+# ===============================================================
+# AUTHENTICATION DATABASE
+# ===============================================================
+
+DATABASE = "users.db"
+
+
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
 
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -106,6 +133,139 @@ def home():
     return jsonify({
         "message": "✅ Backend running!"
     })
+
+
+
+# ===============================================================
+# REGISTER
+# ===============================================================
+
+@app.route('/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email or not password:
+            return jsonify({
+                "success": False,
+                "message": "Email and password are required."
+            }), 400
+
+        if len(password) < 4:
+            return jsonify({
+                "success": False,
+                "message": "Password must be at least 4 characters."
+            }), 400
+
+        password_hash = generate_password_hash(password)
+
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO users (email, password)
+                VALUES (?, ?)
+                """,
+                (email, password_hash)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": "An account with this email already exists."
+            }), 409
+
+        conn.close()
+
+        print(f"✅ New user registered: {email}", flush=True)
+
+        return jsonify({
+            "success": True,
+            "message": "Account created successfully."
+        }), 201
+
+    except Exception as e:
+        print("❌ Registration error:", e, flush=True)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": "Something went wrong while creating the account."
+        }), 500
+
+
+# ===============================================================
+# LOGIN
+# ===============================================================
+
+@app.route('/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email or not password:
+            return jsonify({
+                "success": False,
+                "message": "Email and password are required."
+            }), 400
+
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT id, email, password
+            FROM users
+            WHERE email = ?
+            """,
+            (email,)
+        )
+
+        user = cursor.fetchone()
+        conn.close()
+
+        if user is None:
+            return jsonify({
+                "success": False,
+                "message": "Invalid email or password."
+            }), 401
+
+        user_id, user_email, password_hash = user
+
+        if not check_password_hash(password_hash, password):
+            return jsonify({
+                "success": False,
+                "message": "Invalid email or password."
+            }), 401
+
+        print(f"✅ Login successful: {email}", flush=True)
+
+        return jsonify({
+            "success": True,
+            "message": "Login successful.",
+            "user": {
+                "id": user_id,
+                "email": user_email
+            }
+        }), 200
+
+    except Exception as e:
+        print("❌ Login error:", e, flush=True)
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "message": "Something went wrong while logging in."
+        }), 500
 
 
 # ===============================================================
